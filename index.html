@@ -60,6 +60,8 @@ button{font:inherit;cursor:pointer}
   <h1>PDF 转 9:16 竖图</h1>
   <p class="lead">选一个 PDF，每一页自动生成一张 9:16（1080×1920）图片。文件只在你的浏览器里处理，不会上传。</p>
 
+  <div class="tip" id="inapp" style="border-left-color:#d98a00">你現在可能在某個 App 的內置瀏覽器裏。選文件、保存圖片容易出問題，建議點右上角「⋯」，選「用瀏覽器打開」，改用 Chrome（Android）或 Safari（iPhone）。</div>
+
   <div class="panel">
     <label class="drop" id="drop">
       <strong id="dropTitle">点这里选择 PDF 文件</strong>
@@ -136,7 +138,13 @@ button{font:inherit;cursor:pointer}
   var $ = function(id){return document.getElementById(id)};
   var fileInput=$('file'), go=$('go'), statusEl=$('status'), grid=$('grid'),
       bar=$('bar'), barI=$('barI'), tip=$('tip'), shareAll=$('shareAll'), actions=$('actions'), drop=$('drop');
-  var pdfFile=null, results=[]; // {blob,name,url}
+  (function(){
+    var ua=navigator.userAgent||'';
+    if(/MicroMessenger|QQ\/|MQQBrowser|Weibo|FBAN|FBAV|Instagram|Line\/|xhs|XiaoHongShu|Douyin|aweme|Doubao|DingTalk|; wv\)/i.test(ua)){
+      $('inapp').style.display='block';
+    }
+  })();
+  var pdfFile=null, pdfBuf=null, results=[]; // {blob,name,url}
 
   try{ pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
@@ -149,7 +157,13 @@ button{font:inherit;cursor:pointer}
     pdfFile=f;
     $('dropTitle').textContent=f.name;
     $('dropSub').textContent=(f.size/1024/1024).toFixed(2)+' MB，点击可更换';
-    go.disabled=false; statusEl.textContent='';
+    pdfBuf=null; go.disabled=true; statusEl.textContent='正在讀取文件…';
+    f.arrayBuffer().then(function(b){
+      pdfBuf=b; go.disabled=false; statusEl.textContent='';
+    }).catch(function(e){
+      pdfBuf=null; go.disabled=true;
+      statusEl.textContent='無法讀取這個文件。請先把 PDF 保存到手機本地（不要直接從雲端硬碟或聊天 App 裏選），再用 Chrome 打開本頁重新選擇。';
+    });
   }
   fileInput.addEventListener('change',function(){setFile(fileInput.files[0])});
   ['dragover','dragenter'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault()})});
@@ -160,7 +174,7 @@ button{font:inherit;cursor:pointer}
   }
 
   async function run(){
-    if(!pdfFile) return;
+    if(!pdfFile || !pdfBuf) return;
     go.disabled=true; grid.innerHTML=''; results.forEach(function(r){URL.revokeObjectURL(r.url)}); results=[];
     tip.style.display='none'; actions.style.display='none';
     bar.style.display='block'; barI.style.width='0';
@@ -171,7 +185,7 @@ button{font:inherit;cursor:pointer}
     var wm=$('wmText').value.trim(), wmA=parseFloat($('wmOp').value)||0.16;
     try{
       statusEl.textContent='正在读取 PDF…';
-      var buf=await pdfFile.arrayBuffer();
+      var buf=new Uint8Array(pdfBuf.slice(0));
       var pdf=await pdfjsLib.getDocument({data:buf}).promise;
       var n=pdf.numPages, made=0;
       for(var p=1;p<=n;p++){
